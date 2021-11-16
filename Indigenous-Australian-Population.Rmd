@@ -1,0 +1,658 @@
+---
+title: "Assignment 1 - FIT5145"
+author: "Ricardo Arias (ID: 30550971)"
+date: "13/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Task A: Investigating the size of the Indigenous Australian Population
+In this task, is required to visualise the relationship between the distribution and age of Indigenous Australians and gain insights into relations and trends over time. The data files used in this task were originally downloaded from the Australian Bureau of Statistics (ABS). 
+
+> region (Data1): This file contains yearly data regarding the estimated resident population of Indigenous Australians, grouping by indigenous regions, between 2016 to 2031.
+
+> state (Data2): This file contains yearly data regarding the estimated resident population of Indigenous Australians, grouping by state or territory, between 2006 and 2031.
+
+
+## A1. Investigating the Distribution of Indigenous Australians
+Indigenous Australians are part of Australian society everywhere, but some parts of the country have larger populations than others. For Data1, Australia is segmented into regions (titled “Indigenous regions”) and the expected Indigenous population for each region is indicated. This data also divides each region’s population into different age groups.
+
+### 1. Import libraries
+The libraries required to do this task are to wrangle and visualize the data given
+```{r}
+library(tidyverse) # Wrangle the data
+library(ggplot2) # Visualize the data
+library(scales) # % Format
+```
+
+### 2. Import the data
+The data given to do this task is an Excel file, stored in the same place as this one, that is why we only require to import it by its name
+```{r}
+region <- read.csv('./data/IndigAusPopData_byregion.csv')
+```
+
+### 3. Inspect the data
+By inspecting the data we realise that there are 8288 rows and only 7 columns, we also know the names of them and the class of variables that they store.
+```{r}
+str(region)
+```
+
+### 4. Wrangle the data
+
+#### 4.1. Get rid of columns
+The values in the columns *Projection.series* and *Frequency* are all the same, and it is only 1 unique value of information, that is why this information is not relevant in the data frame
+```{r}
+unique(region$Projection.series)
+unique(region$Frequency)
+```
+
+```{r}
+region <- region[,1:5]
+```
+
+#### 4.2. Rename the columns
+For better understanding we proceed to rename the columns as follows
+```{r}
+names(region) <- c('region_id', 'region', 'age', 'year', 'population') 
+```
+
+#### 4.3. Identify NULL, NA or "" values
+By using the following functions, we can identify that there are not NULL or NA values
+```{r}
+apply(region, 2, function(x) any(is.null(x))) # Identify any Null in the df
+```
+```{r}
+apply(region, 2, function(x) any(is.na(x))) # Identify any NA in the df
+```
+```{r}
+apply(region, 2, function(x) any(x == '')) # Identify any '' in the df
+```
+
+#### 4.4. Column region_id
+We can observe that the region_id is an integer but we can not operate with it, it's function is to identify the region.
+```{r}
+class(region$region_id)
+unique(region$region_id)
+```
+
+By observing the unique values of region_id we can identify that there is a pattern in this numbers. It seems that the first number (100, 200, 300, ... , 800) is a big group of the id, and that the last digit is the number of the region into the the big group (1, 2, ... , 8). That is why we proceed to created two new columns with this information that could be useful in the future.
+```{r}
+region$region_id1 <- lapply(region$region_id, FUN=function(x) substring(x, 1, 1)) # Get the first character of the string in region$region_id and stred in a new column
+region$region_id2 <- lapply(region$region_id, FUN=function(x) substring(x, 3,3)) # Get the last character of the string in region$region_id and stred in a new column
+```
+
+And finally we convert the columns region_id, region_id1 and region_id2 to be a factor instead of being an integer or a list
+```{r}
+region$region_id <- as.factor(region$region_id)
+region$region_id1 <- factor(region$region_id1, levels=unique(region$region_id1))
+region$region_id2 <- factor(region$region_id2, levels=unique(region$region_id2))
+str(region)
+```
+
+By taking a close look to the id1, we can identify that each id is a different state/territory as follows:
+```{r}
+for(id1 in unique(region$region_id1)){
+    cat('Region ID:', id1, '[',as.character(unique(region$region[region$region_id1 == id1])), ']\n')
+}
+```
+
+By looking at the regions of each Region ID we able able to identify that they are grouped by state/territory that could be found by searching on internet, and the results are as follow:
+```{r}
+region$region_id1 <- as.character(region$region_id1)
+region$region_id1[region$region_id1 == '1'] <- 'NSW'
+region$region_id1[region$region_id1 == '2'] <- 'Vic'
+region$region_id1[region$region_id1 == '3'] <- 'QLD'
+region$region_id1[region$region_id1 == '4'] <- 'SA'
+region$region_id1[region$region_id1 == '5'] <- 'WA'
+region$region_id1[region$region_id1 == '6'] <- 'Tas'
+region$region_id1[region$region_id1 == '7'] <- 'NT'
+region$region_id1[region$region_id1 == '8'] <- 'ACT'
+region$region_id1 <- as.factor(region$region_id1)
+levels(region$region_id1)
+```
+Finally, we rename the columns region_id1 and region_id2. To make the data frame more readble
+```{r}
+names(region) <- c('region_id', 'region', 'age', 'year', 'population', 'state', 'id') # Rename the columns
+str(region)
+```
+
+#### 4.5. Column age
+First we convert this column as factor and then take a look to its levels
+```{r}
+region$age <- as.factor(region$age)
+levels(region$age)
+```
+
+By observing the levels of the factor region$age, we can observe that there are two levels that were read as dates instead of being read as a range of ages.
+
+- The range of ages 5-9 was read as 5-Sep
+- The range of ages 10-14 was read as Oct-14
+
+To fix these error we convert the column to character, then replace the values of interest, and finally convert the column to factor again
+```{r}
+region$age <- as.character(region$age)
+region$age[region$age == 'Oct-14'] <- '10-14' # Replace values
+region$age[region$age == '5-Sep'] <- '5-9' # Replace values
+region$age <- as.factor(region$age) # Convert column to factor
+levels(region$age)
+```
+
+#### 4.6. Column year
+As the region_id, the column year is an integer but as we can not operate with it we are going to convert it to a factor
+```{r}
+region$year <- as.factor(region$year)
+levels(region$year)
+```
+
+Finally, after we wrangle the data we can observe that the data frame meet all the requirements to analyse the information
+```{r}
+head(region)
+```
+```{r}
+str(region)
+```
+
+### 5. Answer the questions
+
+#### 5.1. What regions have the maximum and minimum total Indigenous populations in 2016 and 2031?
+To respond this question we have to create a new data frame where we aggregate the sum of the population by region and year
+```{r}
+df <- aggregate(region$population, by=list(region$region, region$year), FUN=sum) # Aggregate population by region and year
+names(df)  <- c('region', 'year', 'population') # REname the columns of df
+head(df)
+```
+Then, with this new data frame we are able to give an answer to the question
+
+**Maximum total Indigenous population in 2016**
+```{r}
+max_population_2016 = max(df$population[df$year == '2016'])
+region_max_population_2016 = as.character(df$region[df$year == '2016' & df$population == max_population_2016])
+cat('The region that has the maximum total Indigenous population in 2016 is', region_max_population_2016, 'with', max_population_2016, 'Indigenous')
+```
+
+
+**Minimum total Indigenous population in 2016**
+```{r}
+min_population_2016 = min(df$population[df$year == '2016'])
+region_min_population_2016 = as.character(df$region[df$year == '2016' & df$population == min_population_2016])
+cat('The region that has the minimum total Indigenous population in 2016 is', region_min_population_2016, 'with', min_population_2016, 'Indigenous')
+```
+
+
+**Maximum total Indigenous population in 2031**
+```{r}
+max_population_2031 = max(df$population[df$year == '2031'])
+region_max_population_2031 = as.character(df$region[df$year == '2031' & df$population == max_population_2031])
+cat('The region that has the maximum total Indigenous population in 2031 is', region_max_population_2031, 'with', max_population_2031, 'Indigenous')
+```
+
+
+**Minimum total Indigenous population in 2031**
+```{r}
+min_population_2031 = min(df$population[df$year == '2031'])
+region_min_population_2031 = as.character(df$region[df$year == '2031' & df$population == min_population_2031])
+cat('The region that has the minimum total Indigenous population in 2031 is', region_min_population_2031, 'with', min_population_2031, 'Indigenous')
+```
+
+
+#### 5.2 What region/s have the maximum and minimum growth or decay rates of their total Indigenous population between 2016 and 2031?
+To solve this question, we create a new data frame with only the information of population in 2016 and 2031 in different columns. After, we calculate the rate of growth or decay by using the formula: 
+$$rate = \frac{Population_{2031} - Population _{2016}}{Population _{2016}}$$
+```{r}
+pop_2016 <- df[df$year == '2016', c('region', 'population')]
+pop_2031 <- df[df$year == '2031', c('region', 'population')]
+pop <- merge(pop_2016, pop_2031, by='region')
+names(pop) <- c('region', 'X2016', 'X2031')
+pop$abs_rates <- abs(round((pop$X2031 - pop$X2016)/pop$X2016, 4))
+head(pop)
+```
+After we get this new table, we proceed to get the maximum and minimum rate of growth or decay
+**Maximum rate**
+```{r}
+cat('The region with the maximum growth or decay rate is', as.character(pop$region[pop$abs_rates == max(pop$abs_rates)]),
+'with', percent(max(pop$abs_rates)))
+```
+**Minimum rate**
+```{r}
+cat('The region with the minimum growth or decay rate is', as.character(pop$region[pop$abs_rates == min(pop$abs_rates)]),
+'with', percent(min(pop$abs_rates)))
+```
+
+### 5.3 Plot and describe the growth or decay of the total Indigenous populations for the capitals of the 8 state/territories across all time periods.
+To do this task, we build a spread table with the data frame df, where the rows are the states, the columns are the years and the values are the population per region each year
+```{r}
+df <- aggregate(region$population, by=list(region$state, region$year), FUN=sum)
+names(df) <- c('state', 'year', 'population')
+pop_state_year <- df %>% spread(year, population)
+names(pop_state_year) <- c("state", "X2016",  "X2017",  "X2018", "X2019",  "X2020",  "X2021",  "X2022", "X2023",  "X2024",  "X2025",  "X2026",  "X2027",  "X2028",  "X2029",  "X2030", "X2031")
+head(pop_state_year)
+
+```
+Then, with the new data frame created we calculate the rate of growth or decay between years
+```{r}
+rate_state_year <- data.frame(pop_state_year$state)
+for(i in 3:ncol(pop_state_year)){
+    rate <- round((pop_state_year[,i] - pop_state_year[,i-1])/pop_state_year[,i-1],3)
+    rate_state_year <- data.frame(rate_state_year, rate)
+}
+names(rate_state_year) <- c('state', 'X17_X16', 'X18_X17', 'X19_X18', 'X20_X19', 'X21_X20', 'X22_X21', 'X23_X22', 'X24_X23', 'X25_X24', 'X26_X25', 'X27_X26', 'X28_X27', 'X29_X28', 'X30_X29', 'X31_X30')
+rate_state_year
+```
+
+Now that we have the information required we proceed to plot the information of growth of Indigenous population by state. To do this we have to gather the data frame rate_state_year to get 3 columns: State, Period of calculation and rate of growth or decay.
+```{r}
+g.rate_state_year <- rate_state_year %>% gather(Period, Rate, X17_X16:X31_X30)
+head(g.rate_state_year)
+```
+By using the data frame showed above we proceed to plot 8 different graphs. One for each state, where it can be seen the rate of growth year by year.
+```{r}
+for(i in levels(g.rate_state_year$state)){
+  df <- g.rate_state_year[g.rate_state_year$state == i,]
+  
+  print(ggplot(data=df, aes(x=Period, y=Rate)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Rate), vjust=1.6, color="white", size=3) +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+labs(title=paste('Rate of Growth of Indigenous Population in',i)))
+}
+```
+#### Describing the plots
+
+
+#### Stable rate of growth
+In states like **ACT** and **WA**, the rate of growth is stable over the years. Both states grow at the same rate all the periods with the exceptions of some of them, with a slightly difference of just 1%. That is why we say that the rate of change is these states are stable.
+
+
+#### Increasing rate of growth
+In states like ** NSW, QLD, SA, Tas **, and ** Vic **, the growth rate increases over the years. These states grow at variable rates in all periods with the exception of some, however the trend of the rates is growing annually as can be seen in the graph. That is why we say that the rate of change is that these states are increasing.
+
+
+#### Decreasing rate of growth
+In ** NT**, the growth rate decreases over the years. These states decrease at variable rates in all periods with the exception of some, however the trend of the rates is decreasinging annually as can be seen in the graph. That is why we say that the rate of change in this state is decreasing.
+
+
+
+## A2. Investigating the Ages of Indigenous Australians
+On average, the lifespan of Indigenous Australians is lower than that of the overall Australian population, due to a variety of socio-economic factors. Data1 and Data2 give separate populations for different ages or age groups, but because this is about living populations, not when they die, we can’t use it to calculate average lifespans. Instead, let’s look at how many children are in the
+populations.
+
+### 1. Import the libraries
+```{r}
+library(tidyverse) # Wrangle the data
+library(ggplot2) # Visualize the data
+library(scales) # % Format
+library(googleVis) # Motion chart
+```
+
+### 2. Import the data
+The data given to do this task is an Excel file, stored in the same place as this one, that is why we only require to import it by its name
+```{r}
+state <- read.csv('./Data/IndigAusPopData_bystate.csv')
+```
+
+### 3. Inspect the data
+By inspecting the data we realise that there are 528 rows and 28 columns, we also know the names of them and the class of variables that they store.
+```{r}
+str(state)
+```
+
+### 4. Wrangle the data
+
+#### 4.1. Rename the columns
+To make the data frame more readble we rename the columns
+```{r}
+colnames(state)[1:2] <- c('age', 'state')
+```
+
+#### 4.2. Identify NULL, NA or "" values
+By using the following functions, we can identify that there are not NULL or NA values
+```{r}
+apply(state, 2, function(x) any(is.null(x)))
+```
+
+```{r}
+apply(state, 2, function(x) any(is.na(x)))
+```
+
+
+```{r}
+apply(state, 2, function(x) any(x == ''))
+```
+
+#### 4.3. Convert columns from 2006-2031 to integer
+As we could see in the inspection of the data, the data of the columns x2006 to x2031 is stored as character, and as is it population of indigenous it must be integer
+```{r}
+for(i in 3:ncol(state)){
+    state[,i] <- as.numeric(gsub(",","",state[,i]))
+}
+```
+
+Finally, after we wrangle the data we can observe that the data frame meet all the requirements to analyze the information
+```{r}
+str(state)
+```
+```{r}
+head(state)
+```
+### 5. Answer the questions
+
+#### 5.1. Using Data1, which region has the highest percentage of children in its total 2016 population?
+First we create a new data frame with the total population of each region in 2016
+```{r}
+df <- region[region$year == '2016',]
+pop_region <- aggregate(df$population, by=list(df$region), FUN=sum)
+names(pop_region) <- c('region', 'population')
+head(pop_region)
+```
+Then, we create another dataframe with the population of children (age < 15) of each region, and we merge these to dataframes
+```{r}
+df <- df[df$age == '0-4' | df$age == '5-9' | df$age == '10-14',]
+chpop_region <- aggregate(df$population, by=list(df$region), FUN=sum)
+names(chpop_region) <- c('region', 'children_pop')
+pop_region <- merge(pop_region, chpop_region, by='region')
+head(pop_region)
+```
+Finally, we calculate the percentage of children in each region in 2016 and get the highest value
+```{r}
+pop_region$perc_child <- round(pop_region$children_pop/pop_region$population,2)
+cat('The region with the highest percentage of children is',
+    as.character(pop_region$region[pop_region$perc_child == max(pop_region$perc_child)]),
+    'with', percent(max(pop_region$perc_child)),"\n\n")
+cat('The region with the lowest percentage of children is',
+    as.character(pop_region$region[pop_region$perc_child == min(pop_region$perc_child)]),
+    'with', percent(min(pop_region$perc_child)))
+```
+
+#### 5.2. Using Data2 only, calculate and discuss which state or territory has the highest percentage of children in its total 2006, 2016 and 2031 populations.
+First we create a new data frame with the total population of each state in 2006, 2016 and 2031
+
+```{r}
+df <- state[,c('age', 'state', 'X2006', 'X2016', 'X2031')]
+pop_state <- aggregate(list(df$X2006, df$X2016, df$X2031), by=list(df$state), FUN=sum)
+names(pop_state) <- c('state', 'pop_2006', 'pop_2016', 'pop_2031')
+pop_state
+```
+
+Then, we create another dataframe with the population of children (age < 15) of each region, and we merge these to dataframes
+```{r}
+df_children <- df[df$age %in% c('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14'),]
+chpop_state <- aggregate(list(df_children$X2006, df_children$X2016, df_children$X2031), by=list(df_children$state), sum)
+names(chpop_state) <- c('state', 'child_2006', 'child_2016', 'child_2031')
+pop_state <- merge(pop_state, chpop_state, by='state')
+head(pop_state)
+```
+Finally, we calculate the percentage of children in each state in 2006, 2016 and 2031, and get the highest value in each year
+```{r}
+pop_state$perc_child2006 <- round(pop_state$child_2006/pop_state$pop_2006,2)
+pop_state$perc_child2016 <- round(pop_state$child_2016/pop_state$pop_2016,2)
+pop_state$perc_child2031 <- round(pop_state$child_2031/pop_state$pop_2031,2)
+```
+```{r}
+cat('The state with the highest percentage of children in 2006 is',
+    as.character(pop_state$state[pop_state$perc_child2006 == max(pop_state$perc_child2006)]),
+    'with', percent(max(pop_state$perc_child2006)), '\n')
+
+cat('The states with the highest percentage of children in 2016 are',
+    as.character(pop_state$state[pop_state$perc_child2016 == max(pop_state$perc_child2016)]),
+    'with', percent(max(pop_state$perc_child2016)), '\n')
+
+cat('The states with the highest percentage of children in 2031 are',
+    as.character(pop_state$state[pop_state$perc_child2031 == max(pop_state$perc_child2031)]),
+    'with', percent(max(pop_state$perc_child2031)))
+```
+
+#### 5.3. Use R to build a Motion Chart comparing the total Indigenous Australian population of each region to the percentage of Indigenous Australian children in each state/territory. Use the region populations calculated from Data1 and the child percentage values calculated from Data2. The motion chart should show the population on the x-axis, the percentage on the y-axis, the bubble size should depend on the population.
+To do this task, first we have to build a data frame with 4 columns: State, Year, Population and % of children. 
+
+From the data frame **region** (Data1) we get the total population of each state/territory
+```{r}
+df_pop <- aggregate(region$population, by=list(region$state, region$region,region$year), FUN=sum)
+names(df_pop) <- c('state', 'region','year', 'population')
+str(df_pop)
+```
+And from the dataframe **state** (Data2) we get the population of children of each state/territory
+
+```{r}
+df_children <- state[state$age %in% c('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14'),] # Get the population of indigenous with age lees that 15
+g.df_children <- df_children %>% gather(year, children, X2016:X2031) # Gather the data frame we just created to put it in the same format as df_pop
+g.df_children <- aggregate(g.df_children$children, by=list(g.df_children$state,g.df_children$year), FUN=sum) # Now that we know that every Indigenous in this data frame in children, we are not interested in thier ages
+names(g.df_children) <- c('state', 'year', 'children') # Rename the columns for better understanding
+g.df_children$year <- substring(g.df_children$year, 2, 5) # Remove the X at the begining of each year
+g.df_children$year <- as.factor(g.df_children$year) # Convert the column year as factor
+str(g.df_children)
+```
+After having the data frames required to build the motion chart we proceed to merge both data frames, to have the information in the same data frame
+```{r}
+df_mchart <- df_pop %>% right_join(g.df_children, by=c('state', 'year'))
+df_mchart$perc_child <- df_mchart$children/df_mchart$population
+df_mchart$year <- as.numeric(as.character(df_mchart$year))
+str(df_mchart)
+```
+Finally, when we already have the data frame we proceed to make the graph
+```{r}
+head(df_mchart)
+```
+
+
+```{r}
+M1 <- gvisMotionChart(df_mchart, idvar = "region", timevar = "year", xvar = "population", yvar = "perc_child", colorvar = "state", sizevar = "population")
+plot(M1)
+```
+
+
+#### 5.4. Using the Motion Chart, answer the following questions, supporting your answers with relevant R code and/or Motion Charts
+
+##### 5.4.a. Which region’s population overtakes that of another region in the same state/territory? In which year/s does this happen?
+By changing the bubble chart for a bar chart showing the population of each state, is easy to identify that. In the state of NT, the region Apatula overtakes Katherine in 2021. In 2020 the population of Apatula and Katherine was 10.742 and 10.846 respectively, and in 2021 is 10.891 and 10.789 
+
+##### 5.4.b. Is there generally a relationship between the Indigenous Australian population size and percentage of children in the population? If so, what kind of relationship? Explain your answer.
+There is an inverse proportion between population and percentage of children. The regions with more population tend to have less percentage of children, while the regions with less population tend to have more percentage of children. 
+
+##### 5.4.c. Colour is commonly used in data visualisation to help understand data. Which aspect of this data would you use colour for in your plot and why?
+I used the color to differentiate the state, the reason to do that is that all the bubbles are going to show the population against the percentage of children of each region, so 37 bubbles are going to be moving around in the same space. So one way to differentiate them is the color 
+
+##### 5.4.d. Are there any other interesting things you notice in the data or any changes you would recommend for the Motion Chart? 
+It could be interesting with another feature like shapes, we could differentiate the different regions along the time.
+
+
+
+# B: Exploratory Analysis on Australian Immunisation rates
+In this task, you are required to do some exploratory analysis on data relating to the Australian childhood immunization rates. This data was originally prepared and released through the Australian Government’s Australian Institute of Health and Welfare. We have extracted the data from the original files and put it into a simpler format.
+
+## B1. Values and Variables
+
+### 1. Import libraries
+The libraries required to do this task are to wrangle and visualize the data given
+```{r}
+library(tidyverse) # Wrangle the data
+library(ggplot2) # Visualize the data
+library(scales) # % Format
+library(visdat) # Visualization of missing data
+```
+
+### 2. Import the data
+The data given to do this task is an Excel file, stored in the same place as this one, that is why we only require to import it by its name
+```{r}
+immun <- read.csv('./data/AusImmunisationData.csv')
+```
+
+### 3. Inspect the data
+By inspecting the data we realise that there are 456 rows and 16 columns, we also know the names of them and the class of variables that they store.
+```{r}
+str(immun)
+```
+
+### 4. Wrangle the data
+
+#### 4.1. Identify NULL, NA, "" or NP values
+By using the following functions, we can identify that there are not NULL or NA values
+
+```{r}
+apply(immun, 2, function(x) any(x == ''))
+```
+```{r}
+apply(immun, 2, function(x) any(x == 'NP'))
+```
+
+To make the missing values uniform, we are going to replace '' and 'NP' values for NA values, and then visualize the missing data in the data frame
+```{r}
+immun$Interpret.with.caution....[immun$Interpret.with.caution.... == ''] <- NA
+immun$Number.of.registered.IndigAus..children[immun$Number.of.registered.IndigAus..children == 'NP'] <- NA
+immun$Number.IndigAus.fully.immunised[immun$Number.IndigAus.fully.immunised == 'NP'] <- NA
+immun$Number.IndigAus.not.fully.immunised[immun$Number.IndigAus.not.fully.immunised == 'NP'] <- NA
+immun %>% vis_miss() + ggplot2::theme(legend.position = "bottom")
+```
+
+By taking a closer look to the columns *Interpret.with.caution....* the ~95% of the data in the column Interpret.with.caution.... is empty. What could tell us that # is a flag that the last person that manipulated this data set wrote, to be more aware with these rows. Again this columns is useless
+```{r}
+length(immun$Interpret.with.caution....[immun$Interpret.with.caution.... == ''])/length(immun$Interpret.with.caution....)
+```
+
+
+#### 4.2 Get rid of columns
+With the closer analysis, we realize that we can get rid of the columns:
+
+- X
+- X.1
+- X.2
+- X.3
+- Interpret.with.caution....
+
+```{r}
+immun <- immun[,1:11]
+str(immun)
+```
+
+
+
+#### 4.4. Rename some Columns
+Rename some columns to make them more readble
+```{r}
+colnames(immun)[1] <- 'state'
+```
+
+
+#### 4.5. Last 6 columns editing
+As their name says, all these columns are numbers and it is stored as character. That is why we proceed to change it
+```{r}
+immun[,6] <- as.numeric(gsub(",","",immun[,6]))
+immun[,7] <- as.numeric(gsub(",","",immun[,7]))
+immun[,8] <- as.numeric(gsub(",","",immun[,8]))
+immun[,9] <- as.numeric(gsub(",","",immun[,9]))
+immun[,10] <- as.numeric(gsub(",","",immun[,10]))
+immun[,11] <- as.numeric(gsub(",","",immun[,11]))
+```
+```{r}
+str(state)
+```
+
+
+### 5. Answer the questions
+
+#### 5.1. How many PHN areas does the data cover?
+```{r}
+cat('The data covers',length(unique(immun$PHN.code)), 'different PHN areas')
+```
+
+#### 5.2. What are the possible values for 'PHN code'?
+```{r}
+unique(immun$PHN.code)
+```
+
+#### 5.3. For each row, calculate the percentage of Australian children that are fully immunised (this is the immunisation rate). What are the average, maximum and minimum immunisation rates? Calculate the same for the group that are Indigenous Australian children. Do all of those values seem statistically reasonable to you?
+First we have to create two new columns with these calculations as we show as follows.
+
+```{r}
+immun$immun.rate <- round(immun$Number.fully.immunised / immun$Number.of.registered.children,4)
+immun$immun.rate.Indegenous <- round(immun$Number.IndigAus.fully.immunised / immun$Number.of.registered.IndigAus..children,4)
+
+```
+
+Then with the help of these new columns, we can get the maximum, minimum and mean values of the rate of immunisation
+```{r}
+summary(immun$immun.rate)
+```
+```{r}
+summary(immun$immun.rate.Indegenous)
+```
+
+These values seem to be good, as the rate of immunisation must be between 0 and 1, as it is a percentage. Also we found 24 NA values that give us no information about the data and it is removed. 
+
+
+## B2. Variation in rates over Time, Age and Location
+Generate boxplots (or other plots) of the immunisation rates versus year and age to answer the following questions:
+
+### 1. Have the immunisation rates improved over time? Are the median immunisation rates increasing, decreasing or staying the same?
+```{r}
+immun %>%
+  ggplot(aes(x = Reporting.Year,  y = immun.rate)) +
+  geom_boxplot(outlier.alpha = 0) + # hide the outliers
+  geom_jitter(alpha = 0.3) +
+  
+    labs(title = "Immunisation Rate of Australian Children per Year", x ='Year', y='Immunisation Rate')
+```
+
+Between 2012-13 and 2014-15 the rate of immunization slightly decreases and it was almost stable, but from 2014-15 to 2016-17 it is evident that the rate of immunization increase almost 1% yearly.
+
+### 2. How do the immunisation rates vary with the age of the child?
+
+```{r}
+immun %>%
+  ggplot(aes(x = Age.group,  y = immun.rate)) +
+  geom_boxplot(outlier.alpha = 0) + # hide the outliers
+  geom_jitter(alpha = 0.3) + labs(title = "Immunisation Rate of Australian Children per Age Group", x ='Age Group', y='Immunisation Rate')
+```
+
+From the graph we can identify that 5-year-old children have the highest immunization rate with ~93%, followed by 1-year-old children and lastly those of two years, which It means that many children are vaccinated as soon as they are born but forget to follow the vaccination in the next two years, and afterwards before reaching the age of five; in their great majority, they are fully vaccinated
+
+
+
+## 3. What is the median rate per state/territory?
+```{r}
+immun %>%
+  ggplot(aes(x = state,  y = immun.rate.Indegenous)) +
+  geom_boxplot(outlier.alpha = 0) + # hide the outliers
+  geom_jitter(alpha = 0.3) + labs(title = "Immunisation Rate of Australian Indigenous Children per State/Territory", x ='State/Territory', y='Immunisation Rate')+ theme(axis.text.x = element_text(angle = 90))
+median_state <- aggregate(list(immun$immun.rate.Indegenous, immun$immun.rate), by=list(immun$state), FUN=median, na.rm = TRUE)
+names(median_state) <- c('state', 'Immun_rate', 'Immun_ingenous_rate')
+median_state
+```
+
+## 4. Which states or territories seem most consistent in their immunisation rates?
+To answer this question, we have to identify from the third plot which state has the smallest boxplot or the smallest IQR. That means that the Q1 and Q3 are close to the median. By this we can say that along the years the state with the smallest boxplot, is the one that has been more consistent along the years.
+```{r}
+for(i in unique(immun$state)){
+  cat(i, 'IQR:',IQR(immun$immun.rate[immun$state == i]),'\n')
+}
+
+```
+
+Now that we have the results of the IQR of every state, we can conclude that the state with most consistency of immunization rate along the years is ACT with an IQR of 0.89%
+
+
+# References
+
+[Replacement of values in a column in the data frame](https://stackoverflow.com/questions/5824173/replace-a-value-in-a-data-frame-based-on-a-conditional-if-statement)
+
+[Convert a list to factor](https://stackoverflow.com/questions/54957495/how-to-convert-list-given-in-a-data-frame-to-factor-numbers-in-r-data-frame)
+
+[Check if the dataframe has NA or Null values](https://discuss.analyticsvidhya.com/t/how-can-i-check-whether-my-data-frame-contains-na-inf-values-in-some-column-or-not-in-r/1647/2)
+
+[Get the first value of a string](723549/getting-and-removing-the-first-character-of-a-string)
+
+[Rename just one column of a data frame](https://stackoverflow.com/questions/7531868/how-to-rename-a-single-column-in-a-data-frame)
+
+[Convert character to numeric removing commas](https://stackoverflow.com/questions/28129554/in-r-remove-commas-from-a-field-and-have-the-modified-field-remain-part-of-the)
+
+[Transpose a data frame](https://rpubs.com/Mentors_Ubiqum/Transpose_Dataframe)
+
+[Gather and Spread functions](https://uc-r.github.io/tidyr)
+
+[Combine two data frame by the value of two different columns](https://stackoverflow.com/questions/6709151/how-do-i-combine-two-data-frames-based-on-two-columns)
+
+[Display vertically the x-axis label ](https://stackoverflow.com/questions/1330989/rotating-and-spacing-axis-labels-in-ggplot2)
+
+[Use the first row of a data frame as the header of it](https://stackoverflow.com/questions/32054368/use-first-row-data-as-column-names-in-r)
+
+[Substring of all the elements of the column of a data frame ](https://stackoverflow.com/questions/21283148/substring-of-all-data-frame-elements)
